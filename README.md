@@ -20,8 +20,8 @@ Este repositorio contiene la arquitectura, configuraciones y scripts de desplieg
 1. **Configurar Host (Proxmox):** Desplegar un contenedor LXC Privilegiado (Ubuntu 24.04).
 2. **Ejecutar Setup:**
    ```bash
-   git clone [https://github.com/tu-usuario/NextGen-SOC-eBPF.git](https://github.com/tu-usuario/NextGen-SOC-eBPF.git)
-   cd NextGen-SOC-eBPF/scripts
+   git clone https://github.com/BlueShield-Ch4rl13/Infra-SocAnalyst.git
+   cd Infra-SocAnalyst/scripts
    chmod +x setup_soc.sh && ./setup_soc.sh
 
 sequenceDiagram
