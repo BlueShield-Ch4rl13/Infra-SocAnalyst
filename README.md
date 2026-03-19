@@ -1,112 +1,103 @@
-# Infra-SocAnalyst
-In Progress
+## 🗺️ Arquitectura Técnica
 
-# 🛡️ Next-Gen Active SOC: eBPF & SOAR Integration
-
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
-![eBPF](https://img.shields.io/badge/Tech-eBPF_Tetragon-orange)
-![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-blue)
-
-Este repositorio contiene la arquitectura, configuraciones y scripts de despliegue para un **Centro de Operaciones de Seguridad (SOC) de Defensa Activa**. Implementado sobre Proxmox VE, combina observabilidad de Kernel (Ring 0) con orquestación de respuesta en red.
-
-## 🌟 Características Principales
-* **Prevención en Microsegundos:** Uso de **Cilium Tetragon (eBPF)** para matar procesos maliciosos (`SIGKILL`) interceptando llamadas al sistema (`sys_execve`, `tcp_connect`).
-* **Detección de Red (NIDS):** Inspección profunda de paquetes con **Suricata** en modo promiscuo virtual.
-* **Orquestación y Respuesta (SOAR):** Centralización con **Wazuh** y baneos dinámicos mediante *Active Response*.
-* **Observabilidad Avanzada:** Métricas de rendimiento de políticas en tiempo real con **Prometheus y Grafana**.
-
-## 🚀 Guía de Despliegue Rápido (Quick Start)
-
-1. **Configurar Host (Proxmox):** Desplegar un contenedor LXC Privilegiado (Ubuntu 24.04).
-2. **Ejecutar Setup:**
-   ```bash
-   git clone https://github.com/BlueShield-Ch4rl13/Infra-SocAnalyst.git
-   cd Infra-SocAnalyst/scripts
-   chmod +x setup_soc.sh && ./setup_soc.sh
-
-sequenceDiagram
-    participant Atacante as Atacante (Win10)
-    participant Suricata as Suricata (LXC)
-    participant Agent as Wazuh Agent (LXC)
-    participant Manager as Wazuh Manager (SIEM)
-    participant FW as IPTables (Firewall)
-
-    Atacante->>Suricata: Lanza Nmap Scan (T1595)
-    Suricata->>Agent: Genera alerta en eve.json
-    Agent->>Manager: Envía log codificado
-    Manager->>Manager: Correlaciona con Regla Nivel 8+
-    Manager-->>Agent: Dispara orden "Active Response"
-    Agent->>FW: Ejecuta script 'firewall-drop'
-    FW-->>Atacante: Bloquea IP Origen (Drop Traffic)
-    Manager->>Kibana: Registra Incidente Crítico
-
-
+```mermaid
 flowchart TB
-    subgraph PVE [Proxmox VE - Capa de Virtualización Física]
+    %% Definición de Estilos
+    classDef proxmox fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef lxc fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef vm_siem fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    classDef vm_win fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
+    classDef vm_atk fill:#ffebee,stroke:#c62828,stroke-width:2px;
+    classDef docker fill:#e3f2fd,stroke:#1565c0,stroke-width:1px,stroke-dasharray: 5 5;
+
+    subgraph PROXMOX [Hypervisor: Proxmox VE]
         direction TB
-        
-        subgraph VLAN10 [VLAN 10 - Red de Gestión y Seguridad SOC]
+        BRIDGE((Virtual Bridge\nvmbr0\nModo Promiscuo))
+
+        subgraph RED_MGT [VLAN 10: Red de Gestión SOC]
             direction LR
-            subgraph VM1 [VM Ubuntu: SRV-WAZUH]
-                direction TB
-                WMAN[Wazuh Manager]
-                WIDX[Wazuh Indexer]
-                KIB[Kibana Dashboard]
+            
+            subgraph WAZUH_VM [VM: SRV-WAZUH / IP: 10.0.10.20]
+                W_MAN(Wazuh Manager\nMotor de Reglas)
+                W_IDX[(Wazuh Indexer\nBBDD Logs)]
+                W_DASH[Wazuh Dashboard\nKibana UI]
             end
 
-            subgraph LXC1 [LXC Privilegiado: SOC-CORE]
-                direction TB
-                WAGT[Wazuh Agent]
-                subgraph DOCKER [Docker Compose Stack]
-                    TET[Tetragon - eBPF]
-                    SUR[Suricata - NIDS]
-                    PRO[Prometheus]
-                    GRA[Grafana]
+            subgraph SOC_LXC [LXC Privilegiado: SOC-CORE / IP: 10.0.10.10]
+                W_AGT_LXC(Wazuh Agent\nLog Forwarder)
+                PORTAINER[Portainer CE\nGestión Docker]
+                
+                subgraph DOCKER_STACK [Stack Docker Compose]
+                    TETRAGON[Tetragon\neBPF Prevención]
+                    SURICATA[Suricata\nNIDS / IPS]
+                    PROMETHEUS[(Prometheus\nTSDB)]
+                    GRAFANA[Grafana\nMétricas UI]
                 end
             end
         end
 
-        subgraph VLAN20 [VLAN 20 - Red de Pruebas y Ataque]
+        subgraph RED_ATK [VLAN 20: Red de Endpoints y Pruebas]
             direction LR
-            subgraph VM2 [VM Windows 10: WIN-CLIENT]
-                WAGT2[Wazuh Agent]
-                VULN[Sistema Vulnerable]
+            
+            subgraph WIN_VM [VM: WIN-CLIENT / IP: 10.0.20.100]
+                W_AGT_WIN(Wazuh Agent)
+                VULN_SVC[Servicios Vulnerables]
             end
 
-            subgraph VM3 [VM Ubuntu: LINUX-CLI]
-                ATK[Scripts Red Team\nNmap, Netcat, Curl]
+            subgraph ATK_VM [VM: LINUX-ATK / IP: 10.0.20.110]
+                RED_TEAM[Scripts Red Team\nNmap, Netcat]
             end
         end
+
+        %% Conexiones Físicas / Capa 2
+        SOC_LXC <--> BRIDGE
+        WAZUH_VM <--> BRIDGE
+        WIN_VM <--> BRIDGE
+        ATK_VM <--> BRIDGE
         
-        %% Conexiones lógicas de red y monitorización
-        VLAN20 -.-> |Tráfico monitorizado por\nSuricata a través de vmbr0| VLAN10
-        WAGT -.-> |Envío de logs JSON| WMAN
-        WAGT2 -.-> |Envío de eventos Win| WMAN
-        
-        %% Acción de bloqueo
-        TET ==> |Bloqueo SIGKILL\nen Kernel| LXC1
+        %% Interacciones Lógicas eBPF / NIDS
+        TETRAGON -.->|Hook en Ring 0| PROXMOX
+        SURICATA -.->|Sniffing Capa 2/3| BRIDGE
     end
-    
-    classDef vm fill:#f9f9f9,stroke:#333,stroke-width:2px;
-    classDef lxc fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
-    classDef atck fill:#ffebee,stroke:#d32f2f,stroke-width:2px;
-    
-    class VM1,VM2 vm;
-    class LXC1 lxc;
-    class VM3 atck;
 
+    %% Asignación de clases
+    class PROXMOX proxmox;
+    class SOC_LXC lxc;
+    class WAZUH_VM vm_siem;
+    class WIN_VM vm_win;
+    class ATK_VM vm_atk;
+    class DOCKER_STACK docker;```
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant ATK as Atacante (VLAN 20)
+    participant SUR as Suricata (NIDS Docker)
+    participant TET as Tetragon (eBPF Docker)
+    participant AGT as Wazuh Agent (LXC)
+    participant MAN as Wazuh Manager (VM)
+    participant KIB as Wazuh Dashboard (UI)
 
-graph LR
-    A[Script Malicioso\n'cat /etc/shadow'] --> B(Espacio de Usuario)
-    B --> C{Llamada al Sistema\nsys_execve}
-    
-    subgraph Kernel Space (Ring 0)
-        C --> D[eBPF Kprobe / Tracepoint]
-        D --> E{Política Tetragon}
-        E -- Coincide (Denegar) --> F[Señal SIGKILL]
-        E -- No Coincide --> G[Ejecución Normal]
+    %% Escenario 1: Ataque de Red
+    rect rgb(255, 235, 238)
+        Note over ATK, KIB: Escenario A: Reconocimiento de Red (Nmap)
+        ATK->>SUR: Escaneo de puertos hostil
+        SUR->>AGT: Escribe firma detectada en eve.json
+        AGT->>MAN: Envía log cifrado (Puerto 1514)
+        MAN->>MAN: Correlaciona regla (Nivel 8+)
+        MAN-->>AGT: Ejecuta Active Response (firewall-drop)
+        AGT->>SUR: Inyecta regla IPTables (Bloqueo IP)
+        MAN->>KIB: Muestra alerta roja en el Dashboard
     end
-    
-    F --> H[Proceso Terminado en microsegundos]
-    F --> I[Log a Wazuh]
+
+    %% Escenario 2: Ataque a Nivel de Sistema
+    rect rgb(227, 242, 253)
+        Note over ATK, KIB: Escenario B: Intento de Reverse Shell / Volcado Credenciales
+        ATK->>TET: Ejecuta binario ofuscado / Lee /etc/shadow
+        TET->>TET: Intercepta syscall (sys_execve / sys_read)
+        TET-->>ATK: Envía SIGKILL al proceso (Bloqueo < 1ms)
+        TET->>AGT: Escribe evento de bloqueo en tetragon.log
+        AGT->>MAN: Envía log cifrado de Kernel
+        MAN->>KIB: Muestra alerta de prevención (eBPF Enforcement)
+    end
+```
