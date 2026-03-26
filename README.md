@@ -1,4 +1,3 @@
-
 # 🚀 Advanced SOC Lab: eBPF, NIDS, SOAR & Local AI Integration
 
 ![Badge Status](https://img.shields.io/badge/Status-Completed-success)
@@ -11,13 +10,13 @@
 
 Este proyecto representa el diseño e implementación de un **Centro de Operaciones de Seguridad (SOC) de vanguardia**, desplegado en un entorno de laboratorio basado en Proxmox VE. 
 
-El objetivo principal es proporcionar una capacidad integral de monitorización, detección de amenazas, gestión de incidentes y automatización de respuestas (SOAR). Destaca por la integración de tecnologías punteras como **eBPF (Extended Berkeley Packet Filter)** mediante Tetragon para la prevención a nivel de kernel, y el uso de **Inteligencia Artificial (IA) local (Ollama)** para el análisis semántico de alertas de seguridad.
+El objetivo principal es proporcionar una capacidad integral de monitorización, detección de amenazas, gestión de incidentes y automatización de respuestas (SOAR). Destaca por la integración de tecnologías punteras como **eBPF (Extended Berkeley Packet Filter)** mediante Tetragon para la prevención a nivel de kernel, y el uso de **Inteligencia Artificial (IA) local (Ollama)** para el análisis semántico de alertas de seguridad frente a ataques simulados de Red Team.
 
 ---
 
 ## 🏗️ Arquitectura Técnica de Red e Infraestructura
 
-El siguiente esquema detalla la topología de red, la segmentación de zonas y el flujo de telemetría y respuesta de incidentes.
+El siguiente esquema detalla la topología de red, la segmentación de zonas, la ubicación del atacante y el flujo de telemetría y respuesta de incidentes.
 
 ```mermaid
 flowchart TB
@@ -29,9 +28,13 @@ flowchart TB
     classDef wazuh fill:#ffedd5,stroke:#9a3412,stroke-width:2px;
     classDef docker fill:#e0f2fe,stroke:#075985,stroke-width:2px;
     classDef api fill:#f3e8ff,stroke:#5b21b6,stroke-width:2px;
+    classDef attacker fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#7f1d1d;
 
-    %% Entorno Externo
+    %% Entorno Externo y Atacante
+    ATK["🥷 Máquina Atacante\n(Kali Linux / Red Team)"]:::attacker
     INET{{"INTERNET"}}:::cloud
+    
+    ATK --> INET
     
     %% Perímetro y Zona DMZ
     FW_EXT["🛡️ External Firewall / WAF"]:::fw
@@ -45,7 +48,7 @@ flowchart TB
     FW_EXT <--> FW_INT
 
     %% Zona de Clientes
-    subgraph RED_CLIENTES [Subred de Endpoints]
+    subgraph RED_CLIENTES ["Subred de Endpoints (Víctimas)"]
         direction LR
         WIN["💻 Win Client\n(Wazuh Agent)"]:::endpoints
         LIN["🐧 Linux Client\n(Wazuh Agent)"]:::endpoints
@@ -53,7 +56,7 @@ flowchart TB
     FW_INT <--> RED_CLIENTES
 
     %% Zona de Gestión SOC
-    subgraph RED_SOC [Subred de Gestión SOC]
+    subgraph RED_SOC ["Subred de Gestión SOC"]
         direction TB
         WAZUH["🧠 Wazuh All-in-One\n(Manager, Indexer, Dashboard)\n[Wazuh Agent local]"]:::wazuh
         
@@ -77,12 +80,22 @@ flowchart TB
     end
 
     %% --- FLUJOS DE DATOS ---
-    %% Telemetría (Líneas punteadas)
+    
+    %% 1. Flujos de Ataque (Líneas rojas punteadas)
+    linkStyle 0,1,2,3,4 stroke:#b91c1c,stroke-width:2px;
+    ATK -. "Ataque Web (Exploit)" .-> WWW
+    ATK -. "Movimiento Lateral / C2" .-> WIN
+
+    %% 2. Telemetría SOC (Líneas grises punteadas)
     WIN -. "Logs cifrados (Puerto 1514)" .-> WAZUH
     LIN -. "Logs cifrados (Puerto 1514)" .-> WAZUH
     DOCKER_SENSORS -. "eve.json / tetragon.log" .-> WAZUH
-  
-    %% SOAR y Automatización (Líneas continuas gruesas)
-    WAZUH == "Webhooks (Alertas Nivel > 10)" ===> DOCKER_SOAR
-    DOCKER_SOAR == "Peticiones REST API" ===> APIS_EXTERNAS
-```  
+
+    %% 3. SOAR y Automatización (Líneas continuas gruesas)
+    WAZUH == "Webhooks (Alertas Nivel > 10)" ==> DOCKER_SOAR
+    DOCKER_SOAR == "Peticiones REST API" ==> APIS_EXTERNAS
+
+```
+
+
+
