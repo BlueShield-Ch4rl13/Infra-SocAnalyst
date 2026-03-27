@@ -1,4 +1,4 @@
-# 🚀 Advanced SOC Lab: eBPF, NIDS, SOAR & Local AI Integration
+# 🚀SOC Lab - AVANZADO: eBPF, NIDS, SOAR & Local AI Integracíon.
 
 ![Badge Status](https://img.shields.io/badge/Status-Completed-success)
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-blue)
