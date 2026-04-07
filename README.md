@@ -27,69 +27,41 @@ flowchart TB
     classDef endpoints fill:#d1fae5,stroke:#065f46,stroke-width:2px;
     classDef wazuh fill:#ffedd5,stroke:#9a3412,stroke-width:2px;
     classDef docker fill:#e0f2fe,stroke:#075985,stroke-width:2px;
-    classDef api fill:#f3e8ff,stroke:#5b21b6,stroke-width:2px;
-    classDef attacker fill:#fecaca,stroke:#b91c1c,stroke-width:2px,color:#7f1d1d;
     classDef switch fill:#e5e7eb,stroke:#4b5563,stroke-width:2px,stroke-dasharray: 5 5;
 
-    ATK["🥷 Máquina Atacante\n(Kali Linux / Red Team)"]:::attacker
     INET{{"INTERNET"}}:::cloud
     
-    ATK --> INET
-    
     FW_EXT["🛡️ External Firewall / WAF"]:::fw
-    INET <--> FW_EXT
+    INET <-->|"Conexión Externa (WAN)"| FW_EXT
     
     PFSENSE["🔥 pfSense Firewall\n(Router on a Stick)"]:::pfsense
-    FW_EXT <-->|WAN| PFSENSE
+    FW_EXT <-->|"Tráfico Filtrado"| PFSENSE
 
-    SW["🔀 Switch Virtual Proxmox\n(Modo VLAN-Aware)"]:::switch
+    SW["🔀 Switch Virtual Proxmox\n(Modo VLAN-Aware / vmbr1)"]:::switch
     PFSENSE <==>|"Enlace Troncal (Trunk 802.1Q)"| SW
 
-    subgraph VLAN10 ["VLAN 10: DMZ"]
+    subgraph VLAN200 ["VLAN 200: DMZ"]
         direction TB
-        WWW["🌐 Servidor Web\n(Víctima Externa)"]:::dmz
+        WWW["🌐 Servidor Web\n(IP Estática)"]:::dmz
     end
-    SW <-->|"Access Port (VLAN 10)"| VLAN10
+    SW <-->|"Access Port (VLAN 200)"| VLAN200
 
-    subgraph VLAN30 ["VLAN 30: Endpoints (Usuarios)"]
+    subgraph VLAN600 ["VLAN 600: Endpoints (Usuarios)"]
         direction LR
-        WIN["💻 Win Client\n(Wazuh Agent)"]:::endpoints
-        LIN["🐧 Linux Client\n(Wazuh Agent)"]:::endpoints
+        WIN["💻 Win Client\n(Red: 10.0.60.x)"]:::endpoints
+        LIN["🐧 Linux Client\n(Red: 10.0.60.x)"]:::endpoints
     end
-    SW <-->|"Access Port (VLAN 30)"| VLAN30
+    SW <-->|"Access Port (VLAN 600)"| VLAN600
 
-    subgraph VLAN20 ["VLAN 20: Gestión SOC"]
+    subgraph VLAN400 ["VLAN 400: Gestión SOC"]
         direction TB
-        WAZUH["🧠 Wazuh All-in-One\n(Manager, Indexer, Dashboard)\n[Wazuh Agent local]"]:::wazuh
-        
-        subgraph DOCKER_HOST ["🐳 Servidor Docker (Microservicios)"]
-            direction LR
-            DOCKER_SENSORS["📡 Stack Telemetría\n- Tetragon (eBPF)\n- Suricata (NIDS)\n- Prometheus / Grafana"]:::docker
-            
-            DOCKER_SOAR["🤖 Stack SOAR e IA\n- Shuffle (Orquestador)\n- TheHive (Casos)\n- Ollama IA (Análisis)"]:::docker
-        end
-        DOCKER_SENSORS ---> DOCKER_SOAR
+        WAZUH["🧠 Wazuh All-in-One\n(Red: 10.0.40.x)"]:::wazuh
+        DOCKER_HOST["🐳 Servidor Docker (Microservicios)\n(Red: 10.0.40.x)"]:::docker
     end
-    SW <-->|"Access Port (VLAN 20)"| VLAN20
+    SW <-->|"Access Port (VLAN 400)"| VLAN400
 
-    SW -.->|"Port Mirroring (Todas las VLANs)"| DOCKER_SENSORS
-
-    subgraph APIS_EXTERNAS ["Inteligencia de Amenazas (CTI)"]
-        direction LR
-        VT["🦠 VirusTotal API"]:::api
-        ABUSE["🚫 AbuseIP API"]:::api
-    end
-    
-    %% Flechas de ataque seguras
-    ATK -. "🔴 Exploit Web" .-> WWW
-    ATK -. "🔴 Movimiento Lateral / C2" .-> WIN
-
-    WIN -. "Logs cifrados" .-> WAZUH
-    LIN -. "Logs cifrados" .-> WAZUH
-    DOCKER_SENSORS -. "Alertas eBPF / NIDS" .-> WAZUH
-    
-    WAZUH == "Webhooks (Alerta Crítica)" ==> DOCKER_SOAR
-    DOCKER_SOAR == "Peticiones REST" ==> APIS_EXTERNAS
+    %% Conexión de red especial para monitorización
+    SW -.->|"Port Mirroring (SPAN Port)\nTodas las VLANs"| DOCKER_HOST
 ```
 ```mermaid
 flowchart TB
