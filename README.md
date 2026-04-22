@@ -107,7 +107,7 @@ flowchart TB
         
         subgraph DOCKER_HOST ["🐳 Servidor Docker (Microservicios)"]
             direction LR
-            DOCKER_SENSORS["📡 Stack Telemetría\n- Tetragon (eBPF)\n- Suricata (NIDS)\n- Prometheus / Grafana\n[Wazuh Agent local]"]:::docker
+            DOCKER_SENSORS["📡 Stack Telemetría\n- Tetragon (eBPF)\n- Patchguard\n- Suricata (NIDS)\n- Prometheus / Grafana\n[Wazuh Agent local]"]:::docker
             
             DOCKER_SOAR["🤖 Stack SOAR e IA\n- Shuffle (Orquestador)\n- TheHive (Casos)\n- Ollama IA (Análisis)\n[Wazuh Agent local]"]:::docker
         end
