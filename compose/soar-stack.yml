@@ -1,0 +1,152 @@
+# ============================================================
+#  Stack SOAR  —  Shuffle · TheHive 5 · Cortex · MISP · Ollama
+#  Host SOAR (VLAN SOC) · gestionado con Portainer
+# ------------------------------------------------------------
+#  ⚠️  PLANTILLA DE REFERENCIA. Ajusta imágenes, versiones y
+#      volúmenes a tu entorno. Rellena los valores en .env
+#      (ver .env.example). NO subas el .env real al repo.
+#      Patrones de infraestructura: ../docs/DESPLIEGUE.md
+# ============================================================
+
+services:
+
+  # ── Shuffle (SOAR) ────────────────────────────────────────
+  shuffle-frontend:
+    image: ghcr.io/shuffle/shuffle-frontend:latest
+    container_name: shuffle-frontend
+    ports:
+      - "3443:3443"          # HTTPS (cert autofirmado -> curl -k)
+      - "3001:80"
+    environment:
+      - BACKEND_HOSTNAME=shuffle-backend
+    depends_on:
+      - shuffle-backend
+    restart: unless-stopped
+
+  shuffle-backend:
+    image: ghcr.io/shuffle/shuffle-backend:latest
+    container_name: shuffle-backend
+    environment:
+      # Hostname interno de Docker, NO la IP del host
+      # (evita errores de TLS / connection reset)
+      - BASE_URL=http://shuffle-backend:5001
+      - SHUFFLE_APP_HOTLOAD_FOLDER=/shuffle-apps
+      - SHUFFLE_FILE_LOCATION=/shuffle-files
+      - ORG_ID=${SHUFFLE_ORG_ID}            # UUID consistente, no el literal "Shuffle"
+      - SHUFFLE_DEFAULT_USERNAME=${SHUFFLE_USER}
+      - SHUFFLE_DEFAULT_PASSWORD=${SHUFFLE_PASS}
+    volumes:
+      - ./shuffle-apps:/shuffle-apps
+      - ./shuffle-files:/shuffle-files
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      - shuffle-opensearch
+    restart: unless-stopped
+
+  shuffle-orborus:
+    image: ghcr.io/shuffle/shuffle-orborus:latest
+    container_name: shuffle-orborus
+    environment:
+      - SHUFFLE_APP_SDK_TIMEOUT=300
+      - ORG_ID=${SHUFFLE_ORG_ID}
+      - ENVIRONMENT_NAME=Shuffle
+      - BASE_URL=http://shuffle-backend:5001
+      # Imagen del worker explícita (las frikky/* están obsoletas)
+      - SHUFFLE_WORKER_IMAGE=ghcr.io/shuffle/shuffle-worker:latest
+      # NO usar SHUFFLE_SWARM_CONFIG ni DOCKER_API_VERSION
+    security_opt:
+      - seccomp:unconfined
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  shuffle-opensearch:
+    image: opensearchproject/opensearch:2.14.0
+    container_name: shuffle-opensearch
+    environment:
+      - discovery.type=single-node        # incompatible con cluster.initial_master_nodes
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - bootstrap.memory_lock=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - DISABLE_SECURITY_PLUGIN=true
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
+    volumes:
+      # Requiere en el host:  sysctl -w vm.max_map_count=262144
+      # y  chown 1000:1000  sobre este volumen (evita 502)
+      - ./opensearch-data:/usr/share/opensearch/data
+    restart: unless-stopped
+
+  # ── TheHive 5 (gestión de casos) ──────────────────────────
+  thehive:
+    image: strangebee/thehive:5.3.3
+    container_name: thehive
+    ports:
+      - "9000:9000"
+    depends_on:
+      - thehive-elasticsearch
+    environment:
+      - JVM_OPTS=-Xms1g -Xmx1g
+    command:
+      - --secret=${THEHIVE_SECRET}
+    volumes:
+      - ./thehive-data:/opt/thp/thehive/data
+    restart: unless-stopped
+
+  thehive-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.18
+    container_name: thehive_elasticsearch
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
+    volumes:
+      - ./es-data:/usr/share/elasticsearch/data
+    restart: unless-stopped
+
+  # ── Cortex (analizadores / enriquecimiento) ───────────────
+  cortex:
+    image: thehiveproject/cortex:latest
+    container_name: cortex
+    ports:
+      - "9001:9001"
+    depends_on:
+      - thehive-elasticsearch
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  # ── MISP (inteligencia de amenazas) ───────────────────────
+  misp:
+    image: ghcr.io/misp/misp-docker/misp-core:latest
+    container_name: misp
+    ports:
+      - "8443:443"           # HTTPS (cert autofirmado)
+    environment:
+      # MISP regenera php.ini en cada arranque: configura por
+      # variables de entorno, NO editando el fichero a mano
+      - BASE_URL=${MISP_BASE_URL}            # p.ej. https://<HOST_SOC>:8443
+      - ADMIN_EMAIL=${MISP_ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${MISP_ADMIN_PASSWORD}
+    volumes:
+      - ./misp-data:/var/www/MISP
+    restart: unless-stopped
+
+  # ── Ollama (IA local) ─────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: soc_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama-data:/root/.ollama
+    restart: unless-stopped
+    # Tras arrancar:  docker exec soc_ollama ollama pull llama3.2:3b
+    # (modelo ligero para inferencia en CPU)
+
+# Nota: en Portainer usa RUTAS ABSOLUTAS del host en los binds
+# (Portainer resuelve los relativos desde su propio directorio).

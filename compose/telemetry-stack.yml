@@ -1,0 +1,68 @@
+# ============================================================
+#  Stack TELEMETRÍA  —  Falco/PatchGuard · Tetragon · Suricata
+#  Sensores de detección en tres capas (sistema · kernel · red)
+# ------------------------------------------------------------
+#  ⚠️  PLANTILLA DE REFERENCIA. Ajusta interfaces de red,
+#      versiones y rutas a tu entorno.
+#      Detalle de detección: ../docs/SOAR.md
+# ============================================================
+
+services:
+
+  # ── Tetragon (eBPF · kernel) ──────────────────────────────
+  tetragon:
+    image: quay.io/cilium/tetragon:v1.3.0
+    container_name: tetragon
+    privileged: true
+    pid: host
+    network_mode: host
+    volumes:
+      - /sys/kernel/btf/vmlinux:/var/lib/tetragon/btf:ro
+      - /proc:/procHost
+      # Monta las TracingPolicy. Si "tetra tracingpolicy list"
+      # sale vacío, monta aquí tu carpeta de políticas:
+      - ./tetragon/policies:/etc/tetragon/tetragon.tp.d
+      - /var/log/tetragon:/var/log/tetragon
+    command:
+      - tetragon
+      - --export-filename=/var/log/tetragon/tetragon.log
+    restart: unless-stopped
+    # Política clave: bloqueo-acceso-shadow (SIGKILL al leer /etc/shadow)
+
+  # ── Falco / PatchGuard (sistema · syscalls) ───────────────
+  falco:
+    image: falcosecurity/falco:latest
+    container_name: patchguard
+    privileged: true
+    pid: host
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - /proc:/host/proc:ro
+      - /etc:/host/etc:ro
+      # Logs en /var/log/patchguard/falco.log
+      - /var/log/patchguard:/var/log/patchguard
+      - ./falco/falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml:ro
+    restart: unless-stopped
+
+  # ── Suricata (NIDS · red) ─────────────────────────────────
+  suricata:
+    image: jasonish/suricata:latest
+    container_name: suricata
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - SYS_NICE
+    volumes:
+      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      - ./suricata/rules:/etc/suricata/rules
+      - /var/log/suricata:/var/log/suricata
+    command:
+      # Cambia ens18 por tu interfaz. En red plana, sin port
+      # mirroring Suricata solo ve el tráfico de su propio host.
+      - -i
+      - ens18
+    restart: unless-stopped
+
+# Los tres sensores envían eventos a Wazuh
+# (Wazuh Manager en la VLAN SOC), que correla y dispara el SOAR vía Shuffle.
