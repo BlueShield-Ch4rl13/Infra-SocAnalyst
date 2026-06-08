@@ -348,9 +348,8 @@ Conocimiento *hard-won* durante la integración del pipeline.
 
 ## Trabajo futuro
 
-- Desplegar el diseño segmentado (VLANs + pfSense + DMZ) sobre el laboratorio validado en plano.
 - **Port mirroring** en Proxmox para dar a Suricata visibilidad de todo el tráfico inter-VM dentro de una misma VLAN.
-- Active Response de Wazuh para bloqueo automático de IPs en fuerza bruta.
+- Active Response de Wazuh para bloqueo automático de IPs.
 - Integración de frameworks de emulación de adversario (Atomic Red Team, MITRE Caldera).
 
 ---
@@ -368,7 +367,7 @@ Este repositorio es documentación de un **laboratorio académico**. Antes de re
 
 ## Autor
 
-**CVL** — Proyecto de Síntesis (TFM)
+**CVL** — Proyecto de Síntesis
 
 
 Licencia: [MIT](LICENSE)
