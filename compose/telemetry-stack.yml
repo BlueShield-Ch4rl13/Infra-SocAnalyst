@@ -58,10 +58,9 @@ services:
       - ./suricata/rules:/etc/suricata/rules
       - /var/log/suricata:/var/log/suricata
     command:
-      # Cambia ens18 por tu interfaz. En red plana, sin port
-      # mirroring Suricata solo ve el tráfico de su propio host.
+      # mirroring Suricata solo ve el tráfico.
       - -i
-      - ens18
+      - <PORT>
     restart: unless-stopped
 
 # Los tres sensores envían eventos a Wazuh
