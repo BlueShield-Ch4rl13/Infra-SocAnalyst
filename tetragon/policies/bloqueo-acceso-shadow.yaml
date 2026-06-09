@@ -1,0 +1,33 @@
+# ============================================================
+#  TracingPolicy de Tetragon (eBPF) — bloqueo-acceso-shadow
+#  Mata con SIGKILL cualquier proceso que abra /etc/shadow.
+#  Capa de detección/respuesta a nivel de KERNEL del SOC.
+# ------------------------------------------------------------
+#  Aplicar:  tetra tracingpolicy add bloqueo-acceso-shadow.yaml
+#  Listar:   tetra tracingpolicy list
+#  Si la lista sale vacía, monta esta carpeta como
+#  /etc/tetragon/tetragon.tp.d en el docker-compose de Tetragon.
+# ============================================================
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: "bloqueo-acceso-shadow"
+spec:
+  kprobes:
+    - call: "security_file_open"     # hook del VFS al abrir un fichero
+      syscall: false
+      return: false
+      args:
+        - index: 0
+          type: "file"
+      selectors:
+        - matchArgs:
+            - index: 0
+              operator: "Equal"
+              values:
+                - "/etc/shadow"
+          # Acción de respuesta: terminar el proceso infractor.
+          # Cambia a "Override" con argError -1 si solo quieres
+          # denegar el acceso sin matar el proceso.
+          matchActions:
+            - action: Sigkill

@@ -1,0 +1,44 @@
+<!--
+  ============================================================
+   soc_decoders.xml — Decoders del SOC
+  ------------------------------------------------------------
+   Ubicación:  /var/ossec/etc/decoders/soc_decoders.xml
+
+   Falco/PatchGuard, Tetragon y Suricata (eve.json) emiten en
+   JSON. Wazuh los decodifica con su decoder JSON integrado
+   (json) siempre que el localfile use <log_format>json</log_format>,
+   por lo que los campos quedan accesibles como data.<campo>
+   (p.ej. data.output_fields.proc.name) sin decoder adicional.
+
+   Estos decoders cubren el caso de logs en TEXTO PLANO con un
+   prefijo identificable. Adáptalos solo si tus sensores no
+   escriben JSON. Para JSON puro NO hacen falta.
+  ============================================================
+-->
+<decoder name="patchguard-falco">
+  <prematch>^PatchGuard:|^Falco:</prematch>
+</decoder>
+
+<decoder name="patchguard-falco-fields">
+  <parent>patchguard-falco</parent>
+  <regex offset="after_parent">priority=(\w+) rule=(\.+) proc=(\w+)</regex>
+  <order>priority,rule,proc_name</order>
+</decoder>
+
+<!-- Lectura de los logs JSON (referencia para ossec.conf):
+
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/patchguard/falco.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/tetragon/tetragon.log</location>
+  </localfile>
+
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/suricata/eve.json</location>
+  </localfile>
+-->

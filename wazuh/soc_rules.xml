@@ -1,0 +1,89 @@
+<!--
+  ============================================================
+   soc_rules.xml — Reglas personalizadas del SOC (serie 110xxx)
+   Mapean las detecciones de los sensores a niveles y MITRE.
+  ------------------------------------------------------------
+   Ubicación:  /var/ossec/etc/rules/soc_rules.xml
+   Nota: son reglas de REFERENCIA; ajusta if_sid y los nombres
+   de campo a tu decodificación real (los logs JSON de Falco
+   exponen sus campos bajo data.output_fields.*).
+  ============================================================
+-->
+<group name="soc,custom,">
+
+  <!-- Regla base: cualquier evento del SOC (sensores) -->
+  <rule id="110000" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="data.source">falco|tetragon|syscalls</field>
+    <description>SOC: evento de sensor recibido</description>
+    <group>soc_sensor,</group>
+  </rule>
+
+  <!-- Fase 2 · Shell interactiva (T1059) -->
+  <rule id="110010" level="8">
+    <if_sid>110000</if_sid>
+    <field name="data.output_fields.proc.name">^bash$|^sh$|^zsh$</field>
+    <field name="data.output_fields.proc.tty">\.+</field>
+    <description>SOC/Falco: shell interactiva detectada</description>
+    <mitre>
+      <id>T1059.004</id>
+    </mitre>
+    <group>falco,execution,</group>
+  </rule>
+
+  <!-- Fase 4 · Acceso a /etc/shadow (T1003) — CRÍTICO, dispara SOAR -->
+  <rule id="110020" level="12">
+    <if_sid>110000</if_sid>
+    <field name="data.output_fields.fd.name">/etc/shadow</field>
+    <description>SOC: acceso a /etc/shadow (volcado de credenciales)</description>
+    <mitre>
+      <id>T1003.008</id>
+    </mitre>
+    <group>falco,tetragon,credential_access,</group>
+  </rule>
+
+  <!-- Fase 5 · Descarga de payload con wget/curl (T1105) -->
+  <rule id="110030" level="10">
+    <if_sid>110000</if_sid>
+    <field name="data.output_fields.proc.name">^wget$|^curl$</field>
+    <description>SOC/Falco: descarga de fichero remoto (posible payload)</description>
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+    <group>falco,command_and_control,</group>
+  </rule>
+
+  <!-- Falso positivo: Suricata crea packet sockets en volumen.
+       Suprimimos esa alerta concreta bajándola a nivel 0. -->
+  <rule id="110040" level="0">
+    <if_sid>110000</if_sid>
+    <field name="data.output_fields.proc.name">Suricata-Main</field>
+    <description>SOC/Falco: creación de packet socket por Suricata (FP suprimido)</description>
+    <group>falco,false_positive,</group>
+  </rule>
+
+  <!-- Fase 6 · Persistencia vía cron (T1053) -->
+  <rule id="110050" level="10">
+    <if_sid>110000</if_sid>
+    <field name="data.output_fields.proc.name">^crontab$</field>
+    <description>SOC/Tetragon: modificación de tareas cron (persistencia)</description>
+    <mitre>
+      <id>T1053.003</id>
+    </mitre>
+    <group>tetragon,persistence,</group>
+  </rule>
+
+  <!-- Fase 1 · Correlación de fuerza bruta SSH (T1110).
+       Reutiliza la detección sshd de Wazuh; eleva el nivel
+       cuando hay múltiples fallos del mismo origen. -->
+  <rule id="110060" level="10" frequency="6" timeframe="120">
+    <if_matched_sid>5710</if_matched_sid>
+    <same_source_ip />
+    <description>SOC: fuerza bruta SSH (múltiples fallos del mismo origen)</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_failures,ids,</group>
+  </rule>
+
+</group>

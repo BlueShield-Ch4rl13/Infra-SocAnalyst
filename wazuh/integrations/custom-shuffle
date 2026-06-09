@@ -1,0 +1,25 @@
+#!/bin/sh
+# Lanzador de la integración custom-shuffle para Wazuh.
+# Lo invoca el módulo integrator; usa el Python embebido de Wazuh.
+WPYTHON_BIN="framework/python/bin/python3"
+
+SCRIPT_PATH_NAME="$0"
+DIR_NAME="$(cd $(dirname ${SCRIPT_PATH_NAME}); pwd -P)"
+WODLE_SCRIPT="${DIR_NAME}/custom-shuffle.py"
+
+case ${DIR_NAME} in
+    */active-response/bin | */wodles*)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="$(cd ${DIR_NAME}/../..; pwd)"
+        fi
+        PYTHON_BIN="${WAZUH_PATH}/${WPYTHON_BIN}"
+        ;;
+    */integrations)
+        if [ -z "${WAZUH_PATH}" ]; then
+            WAZUH_PATH="$(cd ${DIR_NAME}/..; pwd)"
+        fi
+        PYTHON_BIN="${WAZUH_PATH}/${WPYTHON_BIN}"
+        ;;
+esac
+
+${PYTHON_BIN} ${WODLE_SCRIPT} $@
