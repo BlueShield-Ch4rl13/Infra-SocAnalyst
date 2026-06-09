@@ -295,11 +295,16 @@ tetra tracingpolicy list
 ├── tetragon/
 │   └── policies/
 │       └── bloqueo-acceso-shadow.yaml
-├── shuffle/
+├── shuffle/            
 │   └── workflow-soc.json         # export del workflow SOAR
+│   └── Readme.md  
+│   └── nodos/
+│       └── ioc_python.py
+│       └── clean.py             
 ├── attack/
 │   ├── attack-demo.sh
 │   └── payload.sh                # simulado / inofensivo
+│   └── Readme.md                # simulado / inofensivo
 └── docs/
     ├── Memoria_Tecnica.pdf
     └── Memoria_Ejecutiva.pdf
