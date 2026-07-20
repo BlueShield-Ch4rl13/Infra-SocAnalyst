@@ -351,14 +351,6 @@ Conocimiento *hard-won* durante la integración del pipeline.
 
 ---
 
-## Trabajo futuro
-
-- **Port mirroring** en Proxmox para dar a Suricata visibilidad de todo el tráfico inter-VM dentro de una misma VLAN.
-- Active Response de Wazuh para bloqueo automático de IPs.
-- Integración de frameworks de emulación de adversario (Atomic Red Team, MITRE Caldera).
-
----
-
 ## Seguridad
 
 Este repositorio es documentación de un **laboratorio académico**. Antes de reutilizar cualquier configuración:
@@ -370,10 +362,17 @@ Este repositorio es documentación de un **laboratorio académico**. Antes de re
 
 ---
 
+## Proyectos relacionados
+ 
+[#proyectos-relacionados](#proyectos-relacionados)
+ 
+- **[Detection-lab](https://github.com/BlueShield-Ch4rl13/Detection-lab)** — catálogo de detecciones en Sigma (detection-as-code), validación automática, conversión a Wazuh/Splunk/Elastic y emulación de adversario con Atomic Red Team sobre esta misma infraestructura, con medición de cobertura MITRE ATT&CK.
+
+---
+
 ## Autor
 
 **CVL** — Proyecto de Síntesis
-
 
 Licencia: [MIT](LICENSE)
 ```
