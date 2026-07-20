@@ -22,8 +22,8 @@ Plataforma SOC completa que integra detección multicapa (kernel, sistema y red)
 - [Estructura del repositorio](#estructura-del-repositorio)
 - [Endpoints de servicio](#endpoints-de-servicio)
 - [Lecciones aprendidas](#lecciones-aprendidas)
-- [Trabajo futuro](#trabajo-futuro)
 - [Seguridad](#seguridad)
+- [proyectos-relacionados](#proyectos-relacionados)
 - [Autor](#autor)
 
 ---
@@ -363,8 +363,6 @@ Este repositorio es documentación de un **laboratorio académico**. Antes de re
 ---
 
 ## Proyectos relacionados
- 
-[#proyectos-relacionados](#proyectos-relacionados)
  
 - **[Detection-lab](https://github.com/BlueShield-Ch4rl13/Detection-lab)** — catálogo de detecciones en Sigma (detection-as-code), validación automática, conversión a Wazuh/Splunk/Elastic y emulación de adversario con Atomic Red Team sobre esta misma infraestructura, con medición de cobertura MITRE ATT&CK.
 
