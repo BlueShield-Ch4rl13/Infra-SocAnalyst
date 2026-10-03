@@ -1,7 +1,7 @@
 <!--
   ============================================================
    soc_decoders.xml — Decoders del SOC
-  ------------------------------------------------------------
+  ============================================================
    Ubicación:  /var/ossec/etc/decoders/soc_decoders.xml
 
    Falco/PatchGuard, Tetragon y Suricata (eve.json) emiten en

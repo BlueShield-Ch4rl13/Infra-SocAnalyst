@@ -21,7 +21,7 @@ services:
       - /proc:/procHost
       # Monta las TracingPolicy. Si "tetra tracingpolicy list"
       # sale vacío, monta aquí tu carpeta de políticas:
-      - ./tetragon/policies:/etc/tetragon/tetragon.tp.d
+      - ../tetragon/policies:/etc/tetragon/tetragon.tp.d   # carpeta real en la raiz del repo
       - /var/log/tetragon:/var/log/tetragon
     command:
       - tetragon
@@ -42,7 +42,10 @@ services:
       - /etc:/host/etc:ro
       # Logs en /var/log/patchguard/falco.log
       - /var/log/patchguard:/var/log/patchguard
-      - ./falco/falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml:ro
+      # AJUSTA: monta aqui tus reglas locales si las tienes. Sin este mount,
+      # Falco arranca con su ruleset por defecto (no inventamos un fichero vacio
+      # porque Docker crearia un directorio en su lugar y Falco fallaria).
+      # - ./falco/falco_rules.local.yaml:/etc/falco/falco_rules.local.yaml:ro
     restart: unless-stopped
 
   # ── Suricata (NIDS · red) ─────────────────────────────────
@@ -54,13 +57,15 @@ services:
       - NET_ADMIN
       - SYS_NICE
     volumes:
-      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
-      - ./suricata/rules:/etc/suricata/rules
+      # AJUSTA: monta tu suricata.yaml y tus reglas cuando los tengas. Sin estos
+      # mounts, Suricata usa la config y las reglas que trae la imagen jasonish/suricata.
+      # - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml:ro
+      # - ./suricata/rules:/etc/suricata/rules
       - /var/log/suricata:/var/log/suricata
     command:
-      # mirroring Suricata solo ve el tráfico.
+      # mirroring: Suricata solo ve el trafico. -i toma una INTERFAZ.
       - -i
-      - <PORT>
+      - eth1   # AJUSTA a tu interfaz espejo (SPAN/TAP)
     restart: unless-stopped
 
 # Los tres sensores envían eventos a Wazuh

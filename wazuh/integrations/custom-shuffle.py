@@ -15,12 +15,26 @@
 # ============================================================
 import sys
 import json
+import time
 
 try:
     import requests
+    from requests.packages.urllib3 import disable_warnings  # type: ignore
+    disable_warnings()  # silencia el aviso de verify=False (cert autofirmado)
 except ImportError:
     # El Python embebido de Wazuh incluye requests.
     requests = None
+
+
+def log(msg):
+    """Deja rastro en stderr y en el integrations.log que el README manda mirar."""
+    linea = "%s custom-shuffle: %s\n" % (time.strftime("%Y/%m/%d %H:%M:%S"), msg)
+    sys.stderr.write(linea)
+    try:
+        with open("/var/ossec/logs/integrations.log", "a") as f:
+            f.write(linea)
+    except OSError:
+        pass
 
 # Grupos de los sensores cuyas alertas queremos enviar al SOAR.
 SENSOR_GROUPS = {"falco", "tetragon", "suricata", "ids"}
@@ -28,6 +42,7 @@ SENSOR_GROUPS = {"falco", "tetragon", "suricata", "ids"}
 
 def main():
     if len(sys.argv) < 4:
+        log("faltan argumentos (uso: <alerta.json> <api_key> <hook_url>)")
         sys.exit(1)
 
     alert_file = sys.argv[1]
@@ -36,7 +51,8 @@ def main():
     try:
         with open(alert_file, "r") as f:
             alert = json.load(f)
-    except Exception:
+    except Exception as e:
+        log("no se pudo leer la alerta %s: %s" % (alert_file, e))
         sys.exit(1)
 
     rule = alert.get("rule", {})
@@ -54,12 +70,17 @@ def main():
     payload["wazuh_id"] = alert.get("id", "")
 
     if requests is None:
+        log("requests no disponible en este Python")
         sys.exit(1)
 
     try:
         # verify=False -> equivalente a curl -k (cert autofirmado de Shuffle)
-        requests.post(hook_url, json=payload, verify=False, timeout=10)
-    except Exception:
+        resp = requests.post(hook_url, json=payload, verify=False, timeout=10)
+        resp.raise_for_status()
+    except Exception as e:
+        # Antes se tragaba el error y el script salia 0 "con exito": un webhook
+        # mal configurado o un 4xx/5xx pasaba inadvertido.
+        log("fallo al reenviar a Shuffle (%s): %s" % (hook_url, e))
         sys.exit(1)
 
     sys.exit(0)

@@ -2,7 +2,7 @@
   ============================================================
    soc_rules.xml — Reglas personalizadas del SOC (serie 110xxx)
    Mapean las detecciones de los sensores a niveles y MITRE.
-  ------------------------------------------------------------
+  ============================================================
    Ubicación:  /var/ossec/etc/rules/soc_rules.xml
    Nota: son reglas de REFERENCIA; ajusta if_sid y los nombres
    de campo a tu decodificación real (los logs JSON de Falco

@@ -1,0 +1,10 @@
+# Secretos y datos locales: nunca al repositorio
+.env
+compose/.env
+*-data/
+**/data/
+*.log
+
+# Python
+__pycache__/
+*.pyc

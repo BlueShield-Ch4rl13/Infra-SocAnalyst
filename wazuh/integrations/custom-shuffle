@@ -22,4 +22,4 @@ case ${DIR_NAME} in
         ;;
 esac
 
-${PYTHON_BIN} ${WODLE_SCRIPT} $@
+exec "${PYTHON_BIN}" "${WODLE_SCRIPT}" "$@"
