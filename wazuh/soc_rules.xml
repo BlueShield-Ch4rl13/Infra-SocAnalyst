@@ -4,26 +4,58 @@
    Mapean las detecciones de los sensores a niveles y MITRE.
   ============================================================
    Ubicación:  /var/ossec/etc/rules/soc_rules.xml
-   Nota: son reglas de REFERENCIA; ajusta if_sid y los nombres
-   de campo a tu decodificación real (los logs JSON de Falco
-   exponen sus campos bajo data.output_fields.*).
+
+   Nombres de campo: en una regla de Wazuh los campos del
+   decodificador json se nombran SIN el prefijo "data."
+   (output_fields.proc.name). "data." es solo cómo aparecen
+   luego dentro de la alerta. Con data.* delante, ninguna de
+   estas reglas casaba.
+
+   Falco escribe "source":"syscall" (singular). La regla base
+   esperaba "syscalls", así que todas las 1100xx colgaban de
+   una regla que no saltaba nunca.
+
+   Tetragon no tiene campo "source": sus eventos se reconocen
+   por process_kprobe (políticas como bloqueo-acceso-shadow) o
+   por process_exec.
+
+   Comprobar con /var/ossec/bin/wazuh-logtest pegando una
+   línea real de falco.log y de tetragon.log.
   ============================================================
 -->
 <group name="soc,custom,">
 
-  <!-- Regla base: cualquier evento del SOC (sensores) -->
+  <!-- Regla base de Falco / PatchGuard -->
   <rule id="110000" level="3">
     <decoded_as>json</decoded_as>
-    <field name="data.source">falco|tetragon|syscalls</field>
-    <description>SOC: evento de sensor recibido</description>
-    <group>soc_sensor,</group>
+    <field name="source">^syscall$</field>
+    <field name="rule">\.+</field>
+    <description>SOC/Falco: evento de sensor recibido</description>
+    <group>soc_sensor,falco,</group>
+  </rule>
+
+  <!-- Regla base de Tetragon: una TracingPolicy ha saltado -->
+  <rule id="110001" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="process_kprobe.policy_name">\.+</field>
+    <description>SOC/Tetragon: politica $(process_kprobe.policy_name)</description>
+    <group>soc_sensor,tetragon,</group>
+  </rule>
+
+  <!-- Regla base de Tetragon: ejecucion de proceso -->
+  <rule id="110002" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="process_exec.process.binary">\.+</field>
+    <description>SOC/Tetragon: ejecucion de proceso</description>
+    <group>soc_sensor,tetragon,</group>
   </rule>
 
   <!-- Fase 2 · Shell interactiva (T1059) -->
   <rule id="110010" level="8">
     <if_sid>110000</if_sid>
-    <field name="data.output_fields.proc.name">^bash$|^sh$|^zsh$</field>
-    <field name="data.output_fields.proc.tty">\.+</field>
+    <field name="output_fields.proc.name">^bash$|^sh$|^zsh$</field>
+    <!-- Falco pone proc.tty=0 cuando no hay terminal -->
+    <field name="output_fields.proc.tty" negate="yes">^0$</field>
     <description>SOC/Falco: shell interactiva detectada</description>
     <mitre>
       <id>T1059.004</id>
@@ -34,18 +66,28 @@
   <!-- Fase 4 · Acceso a /etc/shadow (T1003) — CRÍTICO, dispara SOAR -->
   <rule id="110020" level="12">
     <if_sid>110000</if_sid>
-    <field name="data.output_fields.fd.name">/etc/shadow</field>
-    <description>SOC: acceso a /etc/shadow (volcado de credenciales)</description>
+    <field name="output_fields.fd.name">^/etc/shadow$</field>
+    <description>SOC/Falco: acceso a /etc/shadow (volcado de credenciales)</description>
     <mitre>
       <id>T1003.008</id>
     </mitre>
-    <group>falco,tetragon,credential_access,</group>
+    <group>falco,credential_access,</group>
+  </rule>
+
+  <rule id="110021" level="12">
+    <if_sid>110001</if_sid>
+    <field name="process_kprobe.policy_name">^bloqueo-acceso-shadow$</field>
+    <description>SOC/Tetragon: proceso $(process_kprobe.process.binary) terminado al abrir /etc/shadow</description>
+    <mitre>
+      <id>T1003.008</id>
+    </mitre>
+    <group>tetragon,credential_access,</group>
   </rule>
 
   <!-- Fase 5 · Descarga de payload con wget/curl (T1105) -->
   <rule id="110030" level="10">
     <if_sid>110000</if_sid>
-    <field name="data.output_fields.proc.name">^wget$|^curl$</field>
+    <field name="output_fields.proc.name">^wget$|^curl$</field>
     <description>SOC/Falco: descarga de fichero remoto (posible payload)</description>
     <mitre>
       <id>T1105</id>
@@ -57,7 +99,7 @@
        Suprimimos esa alerta concreta bajándola a nivel 0. -->
   <rule id="110040" level="0">
     <if_sid>110000</if_sid>
-    <field name="data.output_fields.proc.name">Suricata-Main</field>
+    <field name="output_fields.proc.name">^Suricata-Main$</field>
     <description>SOC/Falco: creación de packet socket por Suricata (FP suprimido)</description>
     <group>falco,false_positive,</group>
   </rule>
@@ -65,8 +107,18 @@
   <!-- Fase 6 · Persistencia vía cron (T1053) -->
   <rule id="110050" level="10">
     <if_sid>110000</if_sid>
-    <field name="data.output_fields.proc.name">^crontab$</field>
-    <description>SOC/Tetragon: modificación de tareas cron (persistencia)</description>
+    <field name="output_fields.proc.name">^crontab$</field>
+    <description>SOC/Falco: modificación de tareas cron (persistencia)</description>
+    <mitre>
+      <id>T1053.003</id>
+    </mitre>
+    <group>falco,persistence,</group>
+  </rule>
+
+  <rule id="110051" level="10">
+    <if_sid>110002</if_sid>
+    <field name="process_exec.process.binary">/crontab$</field>
+    <description>SOC/Tetragon: ejecucion de crontab (persistencia)</description>
     <mitre>
       <id>T1053.003</id>
     </mitre>
