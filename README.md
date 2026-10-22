@@ -366,6 +366,16 @@ Conocimiento *hard-won* durante la integración del pipeline.
 
 ---
 
+## Cómo está probado
+
+| Qué | Cómo | Estado |
+|---|---|---|
+| Sintaxis de los stacks | `docker compose config` con `compose/.env.example` | ✔ |
+| XML de reglas y decodificadores de Wazuh | parseo XML | ✔ (falta `wazuh-logtest` con eventos reales de Falco y Tetragon) |
+| Nodo `IOC PYTHON` | ejecutado con una alerta de ejemplo con comillas y barras invertidas | ✔ |
+| Política de Tetragon | carga y prueba con `action: Post` en un host | pendiente |
+| Demo completa (fases 1-6 de `attack/`) | laboratorio en Proxmox (ver `docs/`) | memoria del proyecto; no automatizado |
+
 ## Seguridad
 
 Este repositorio es documentación de un **laboratorio académico**. Antes de reutilizar cualquier configuración:
