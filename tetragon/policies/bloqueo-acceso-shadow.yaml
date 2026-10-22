@@ -1,7 +1,16 @@
 # ============================================================
 #  TracingPolicy de Tetragon (eBPF) — bloqueo-acceso-shadow
-#  Mata con SIGKILL cualquier proceso que abra /etc/shadow.
+#  Mata con SIGKILL cualquier proceso que abra /etc/shadow,
+#  SALVO los binarios del sistema que lo leen por diseño.
 #  Capa de detección/respuesta a nivel de KERNEL del SOC.
+#
+#  Sin la lista de excepciones, la política mataba también a
+#  sshd, sudo, su, login y passwd: nadie podía iniciar sesión
+#  ni elevar privilegios, incluido el propio administrador.
+#  Si tu distribución tiene otro binario legítimo (PAM de un
+#  gestor de pantalla, sssd...), añádelo a matchBinaries
+#  antes de cargar la política, y pruébala primero con
+#  action: Post (solo registra) en vez de Sigkill.
 # ------------------------------------------------------------
 #  Aplicar:  tetra tracingpolicy add bloqueo-acceso-shadow.yaml
 #  Listar:   tetra tracingpolicy list
@@ -26,8 +35,38 @@ spec:
               operator: "Equal"
               values:
                 - "/etc/shadow"
+          # Binarios que leen /etc/shadow legítimamente (autenticación
+          # y gestión de cuentas). Rutas /usr/* y /* por los sistemas
+          # sin /usr fusionado.
+          matchBinaries:
+            - operator: "NotIn"
+              values:
+                - "/usr/sbin/sshd"
+                - "/usr/sbin/sshd-session"          # OpenSSH >= 9.8
+                - "/usr/lib/openssh/sshd-session"
+                - "/usr/libexec/openssh/sshd-session"
+                - "/usr/bin/sudo"
+                - "/usr/bin/su"
+                - "/bin/su"
+                - "/usr/bin/login"
+                - "/bin/login"
+                - "/usr/bin/passwd"
+                - "/usr/bin/chage"
+                - "/usr/bin/gpasswd"
+                - "/usr/sbin/unix_chkpwd"
+                - "/sbin/unix_chkpwd"
+                - "/usr/sbin/chpasswd"
+                - "/usr/sbin/useradd"
+                - "/usr/sbin/usermod"
+                - "/usr/sbin/userdel"
+                - "/usr/sbin/pwck"
+                - "/usr/sbin/grpck"
+                - "/usr/sbin/vipw"
+                - "/usr/sbin/cron"
+                - "/usr/sbin/crond"
           # Acción de respuesta: terminar el proceso infractor.
           # Cambia a "Override" con argError -1 si solo quieres
-          # denegar el acceso sin matar el proceso.
+          # denegar el acceso sin matar el proceso, o a "Post"
+          # para probar la política sin bloquear nada.
           matchActions:
             - action: Sigkill
