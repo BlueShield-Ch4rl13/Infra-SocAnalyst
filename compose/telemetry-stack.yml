@@ -4,7 +4,12 @@
 # ------------------------------------------------------------
 #  ⚠️  PLANTILLA DE REFERENCIA. Ajusta interfaces de red,
 #      versiones y rutas a tu entorno.
-#      Detalle de detección: ../docs/SOAR.md
+#
+#  DÓNDE SE DESPLIEGA: Falco y Tetragon en CADA equipo que se
+#  quiere vigilar (el servidor de la DMZ en la demo), no en el
+#  host SOAR: solo ven las llamadas al sistema de la máquina en
+#  la que corren. Suricata, en un host con una interfaz en el
+#  puerto espejo (SPAN/TAP) del segmento a vigilar.
 # ============================================================
 
 services:
@@ -31,7 +36,7 @@ services:
 
   # ── Falco / PatchGuard (sistema · syscalls) ───────────────
   falco:
-    image: falcosecurity/falco:latest
+    image: falcosecurity/falco:0.45.1
     container_name: patchguard
     privileged: true
     pid: host
@@ -50,7 +55,7 @@ services:
 
   # ── Suricata (NIDS · red) ─────────────────────────────────
   suricata:
-    image: jasonish/suricata:latest
+    image: jasonish/suricata:8.0.7
     container_name: suricata
     network_mode: host
     cap_add:

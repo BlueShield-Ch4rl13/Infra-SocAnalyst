@@ -234,7 +234,11 @@ La **fase 4** es la acción crítica que cruza el umbral y dispara el SOAR compl
 
 ## Despliegue
 
-Los servicios se despliegan como stacks de Docker Compose gestionados con **Portainer** (stack `soc-analyst`, que prefija los nombres de volumen). El host SOAR ejecuta dos stacks: telemetría (Falco, Tetragon, Suricata) y SOAR (Shuffle, TheHive, Cortex, MISP, Ollama). El manager de Wazuh corre en un host independiente.
+Los servicios se despliegan como stacks de Docker Compose gestionados con **Portainer** (stack `soc-analyst`, que prefija los nombres de volumen). El host SOAR ejecuta el stack SOAR (Shuffle, TheHive con Cassandra y Elasticsearch, Cortex, MISP con MariaDB y Redis, Ollama). El stack de telemetría va **en el equipo vigilado**: Falco y Tetragon solo ven las llamadas al sistema de la máquina donde corren, así que en el host SOAR no verían un ataque contra la DMZ; Suricata va en un host con la interfaz en el puerto espejo de ese segmento. El manager de Wazuh corre en un host independiente.
+
+Los puertos se publican en `SOC_BIND` (`compose/.env`), que debe ser la IP del host SOAR en la VLAN SOC: por defecto `127.0.0.1`. Nunca `0.0.0.0`: Ollama no tiene autenticación.
+
+> **Estado de las plantillas:** los ficheros de `compose/` se validan con `docker compose config`, pero en este repositorio no hay un CI que los levante. Antes de una demo, levantar cada stack y revisar `docker compose logs`.
 
 ### Patrones de infraestructura
 
@@ -242,19 +246,29 @@ Los servicios se despliegan como stacks de Docker Compose gestionados con **Port
 - Requiere `vm.max_map_count=262144` en el host y `chown 1000:1000` en el volumen de la BD (evita 502).
 - `cluster.initial_master_nodes` es incompatible con `discovery.type=single-node` y debe eliminarse.
 - **No** usar Docker Swarm (`SHUFFLE_SWARM_CONFIG`). Usar el hostname interno de Docker para `BASE_URL` (`http://shuffle-backend:5001`), no la IP del host.
-- Imágenes `ghcr.io/shuffle/shuffle-*:latest`; las `frikky/shuffle:*` están **obsoletas**. Definir `SHUFFLE_WORKER_IMAGE` y `security_opt: seccomp:unconfined` en Orborus.
+- Imágenes `ghcr.io/shuffle/shuffle-*` con versión fijada (`SHUFFLE_VERSION`); las `frikky/shuffle:*` están **obsoletas**. Definir `SHUFFLE_WORKER_IMAGE` y `security_opt: seccomp:unconfined` en Orborus.
 
 **MISP**
 - La imagen regenera `php.ini` en cada arranque; las ediciones manuales **no persisten**. Configurar vía variables de entorno.
+- Necesita MariaDB y Redis (`misp-db`, `misp-redis`), con sus contraseñas en `.env`.
+
+**TheHive y Cortex**
+- TheHive 5 guarda los datos en Cassandra y el índice en Elasticsearch; Cortex usa Elasticsearch (`--es-uri`). La clave de API de Cortex (`CORTEX_API_KEY`) se crea en la interfaz de Cortex y se pasa a TheHive.
+
+**Integración Wazuh → Shuffle (TLS)**
+- `custom-shuffle.py` verifica el certificado de Shuffle. Con certificado autofirmado, copia la CA al manager y añade `Environment="SHUFFLE_CA=/var/ossec/etc/shuffle-ca.pem"` con `systemctl edit wazuh-manager`. `SHUFFLE_INSECURE_TLS=1` desactiva la verificación, solo en laboratorio.
+- El log de la integración nunca escribe la URL completa del webhook (quien la tiene puede lanzar el workflow).
 
 **Portainer**
 - Resuelve los *bind mounts* relativos desde su directorio interno de compose. Usar siempre **rutas absolutas del host**.
 
 **Ollama**
 - Usar `llama3.2:3b` con `num_predict: 50–60` y prompts cortos para evitar timeouts en CPU.
+- El prompt lleva los datos de la alerta (regla, nivel, técnicas, equipo, IP y log). Lo construye el nodo `IOC PYTHON` con `json.dumps`, y el nodo HTTP de Ollama recibe `$ioc_python.ollama_body` ya serializado: así unas comillas en el log no rompen el JSON.
 
 **Tetragon**
 - Verificar la carga de la TracingPolicy: `tetra tracingpolicy list`. Si aparece vacía: `tetra tracingpolicy add`, o montar la carpeta de políticas como `/etc/tetragon/tetragon.tp.d` en el compose.
+- `bloqueo-acceso-shadow` excluye los binarios que leen `/etc/shadow` legítimamente (sshd, sudo, su, login, passwd...). Sin esa lista, la política dejaba fuera al propio administrador. Probarla primero con `action: Post`.
 
 ### Verificación rápida
 
@@ -336,8 +350,8 @@ Conocimiento *hard-won* durante la integración del pipeline.
 ### Shuffle — resolución de variables
 - Los nodos Execute Python deben terminar con `print(json.dumps({...}))` para que la notación `$nodo.*` resuelva con fiabilidad aguas abajo (no usar `return`).
 - Los nombres de nodo importan exactamente: `IOC PYTHON` exporta como `$ioc_python.*`. Un nombre mal escrito provoca resolución vacía silenciosa, sin error.
-- No inyectar objetos JSON completos en el body de Ollama; rompe el payload. Usar texto estático o referencias escalares.
-- Leer el webhook como `raw = """$exec"""` y parsear con `json.loads` evita el conflicto con el builtin `exit`.
+- No inyectar `$exec.*` directamente en el body de Ollama; rompe el payload. El prompt se construye en `IOC PYTHON` con `json.dumps` (`$ioc_python.ollama_body`).
+- Leer el webhook como `raw = r"""$exec"""` (con la `r`) y parsear con `json.loads`: sin la `r`, una barra invertida de una ruta en la alerta rompe el JSON.
 - Guardar en dos pasos: confirmar el editor del campo **y** guardar el workflow con el icono de disquete del lienzo.
 
 ### TheHive
@@ -345,6 +359,7 @@ Conocimiento *hard-won* durante la integración del pipeline.
 - `sourceRef` debe ser único por alerta para evitar deduplicación silenciosa. Variar siempre la referencia al testear.
 - `.severity` debe ser un entero sin comillas (1–4), no un string.
 - Rutas correctas: `$exec.rule.level`, `$exec.rule.description`, `$exec.data.srcip` (no `$exec.level`, `$exec.source`).
+- La severidad de la ALERT sale de `$ioc_python.severity` (nivel de Wazuh → 1-4). Antes estaba fija en `2` para todo.
 
 ### Ollama
 - Usar `llama3.2:3b` con `num_predict: 50–60` y prompts cortos para evitar timeouts en CPU, en lugar de subir el timeout del nodo.
