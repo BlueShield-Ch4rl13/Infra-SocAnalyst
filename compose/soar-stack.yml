@@ -2,21 +2,33 @@
 #  Stack SOAR  —  Shuffle · TheHive 5 · Cortex · MISP · Ollama
 #  Host SOAR (VLAN SOC) · gestionado con Portainer
 # ------------------------------------------------------------
-#  ⚠️  PLANTILLA DE REFERENCIA. Ajusta imágenes, versiones y
-#      volúmenes a tu entorno. Rellena los valores en .env
+#  ⚠️  PLANTILLA DE REFERENCIA. Rellena los valores en .env
 #      (ver .env.example). NO subas el .env real al repo.
-#      Patrones de infraestructura: ../docs/DESPLIEGUE.md
+#      Despliegue: README.md, apartado "Despliegue".
+#
+#  Seguridad de la plantilla:
+#   - Los puertos se publican en SOC_BIND (por defecto
+#     127.0.0.1). Pon ahí la IP del host SOAR en la VLAN SOC,
+#     nunca 0.0.0.0: Ollama no tiene autenticación y TheHive,
+#     Cortex y MISP no deben verse fuera de la VLAN.
+#   - Versiones fijadas (nada de :latest): una imagen que
+#     cambia sola rompe el laboratorio el día menos pensado.
+#   - docker.sock solo donde es imprescindible (orborus y el
+#     backend de Shuffle lanzan contenedores; Cortex ejecuta
+#     analizadores en Docker). Quien controla esos contenedores
+#     controla el host: no los expongas fuera de la VLAN SOC.
 # ============================================================
 
 services:
 
   # ── Shuffle (SOAR) ────────────────────────────────────────
   shuffle-frontend:
-    image: ghcr.io/shuffle/shuffle-frontend:latest
+    image: ghcr.io/shuffle/shuffle-frontend:${SHUFFLE_VERSION:-2.3.0}
     container_name: shuffle-frontend
     ports:
-      - "3443:3443"          # HTTPS (cert autofirmado -> curl -k)
-      - "3001:80"
+      - "${SOC_BIND:-127.0.0.1}:3443:3443"   # HTTPS (cert autofirmado)
+      # El puerto 3001 (HTTP sin cifrar) ya no se publica: el webhook de
+      # Wazuh y los analistas entran por 3443.
     environment:
       - BACKEND_HOSTNAME=shuffle-backend
     depends_on:
@@ -24,7 +36,7 @@ services:
     restart: unless-stopped
 
   shuffle-backend:
-    image: ghcr.io/shuffle/shuffle-backend:latest
+    image: ghcr.io/shuffle/shuffle-backend:${SHUFFLE_VERSION:-2.3.0}
     container_name: shuffle-backend
     environment:
       # Hostname interno de Docker, NO la IP del host
@@ -44,7 +56,7 @@ services:
     restart: unless-stopped
 
   shuffle-orborus:
-    image: ghcr.io/shuffle/shuffle-orborus:latest
+    image: ghcr.io/shuffle/shuffle-orborus:${SHUFFLE_VERSION:-2.3.0}
     container_name: shuffle-orborus
     environment:
       - SHUFFLE_APP_SDK_TIMEOUT=300
@@ -52,7 +64,7 @@ services:
       - ENVIRONMENT_NAME=Shuffle
       - BASE_URL=http://shuffle-backend:5001
       # Imagen del worker explícita (las frikky/* están obsoletas)
-      - SHUFFLE_WORKER_IMAGE=ghcr.io/shuffle/shuffle-worker:latest
+      - SHUFFLE_WORKER_IMAGE=ghcr.io/shuffle/shuffle-worker:${SHUFFLE_VERSION:-2.3.0}
       # NO usar SHUFFLE_SWARM_CONFIG ni DOCKER_API_VERSION
     security_opt:
       - seccomp:unconfined
@@ -79,19 +91,46 @@ services:
     restart: unless-stopped
 
   # ── TheHive 5 (gestión de casos) ──────────────────────────
+  # TheHive 5 necesita Cassandra (base de datos) y Elasticsearch
+  # (índice). Antes solo tenía el secreto: arrancaba sin dónde
+  # guardar nada.
   thehive:
     image: strangebee/thehive:5.3.3
     container_name: thehive
     ports:
-      - "9000:9000"
+      - "${SOC_BIND:-127.0.0.1}:9000:9000"
     depends_on:
+      - thehive-cassandra
       - thehive-elasticsearch
+      - cortex
     environment:
       - JVM_OPTS=-Xms1g -Xmx1g
     command:
-      - --secret=${THEHIVE_SECRET}
+      - --secret
+      - ${THEHIVE_SECRET:?falta THEHIVE_SECRET en .env}
+      - --cql-hostnames
+      - thehive-cassandra
+      - --index-backend
+      - elasticsearch
+      - --es-hostnames
+      - thehive-elasticsearch
+      - --cortex-hostnames
+      - cortex
+      - --cortex-keys
+      - ${CORTEX_API_KEY:-}
     volumes:
       - ./thehive-data:/opt/thp/thehive/data
+    restart: unless-stopped
+
+  thehive-cassandra:
+    image: cassandra:4.1
+    container_name: thehive_cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=TheHive
+      - MAX_HEAP_SIZE=1024M
+      - HEAP_NEWSIZE=256M
+    volumes:
+      - ./cassandra-data:/var/lib/cassandra
     restart: unless-stopped
 
   thehive-elasticsearch:
@@ -110,38 +149,76 @@ services:
 
   # ── Cortex (analizadores / enriquecimiento) ───────────────
   cortex:
-    image: thehiveproject/cortex:latest
+    image: thehiveproject/cortex:3.2.1-1
     container_name: cortex
     ports:
-      - "9001:9001"
+      - "${SOC_BIND:-127.0.0.1}:9001:9001"
     depends_on:
       - thehive-elasticsearch
+    # Cortex guarda usuarios, organizaciones y trabajos en Elasticsearch:
+    # sin --es-uri no tenía base de datos.
+    command:
+      - --es-uri
+      - http://thehive-elasticsearch:9200
+      - --job-directory
+      - /tmp/cortex-jobs
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp/cortex-jobs:/tmp/cortex-jobs
     restart: unless-stopped
 
   # ── MISP (inteligencia de amenazas) ───────────────────────
+  # MISP necesita MariaDB y Redis: antes no tenía ninguno de los dos.
   misp:
-    image: ghcr.io/misp/misp-docker/misp-core:latest
+    image: ghcr.io/misp/misp-docker/misp-core:${MISP_VERSION:-v2.5.50}
     container_name: misp
     ports:
-      - "8443:443"           # HTTPS (cert autofirmado)
+      - "${SOC_BIND:-127.0.0.1}:8443:443"     # HTTPS (cert autofirmado)
+    depends_on:
+      - misp-db
+      - misp-redis
     environment:
       # MISP regenera php.ini en cada arranque: configura por
       # variables de entorno, NO editando el fichero a mano
       - BASE_URL=${MISP_BASE_URL}            # p.ej. https://<HOST_SOC>:8443
       - ADMIN_EMAIL=${MISP_ADMIN_EMAIL}
-      - ADMIN_PASSWORD=${MISP_ADMIN_PASSWORD}
+      - ADMIN_PASSWORD=${MISP_ADMIN_PASSWORD:?falta MISP_ADMIN_PASSWORD en .env}
+      - MYSQL_HOST=misp-db
+      - MYSQL_USER=misp
+      - MYSQL_PASSWORD=${MISP_DB_PASSWORD:?falta MISP_DB_PASSWORD en .env}
+      - MYSQL_DATABASE=misp
+      - REDIS_HOST=misp-redis
+      - REDIS_PASSWORD=${MISP_REDIS_PASSWORD:?falta MISP_REDIS_PASSWORD en .env}
     volumes:
       - ./misp-data:/var/www/MISP
     restart: unless-stopped
 
+  misp-db:
+    image: mariadb:10.11
+    container_name: misp_db
+    environment:
+      - MARIADB_DATABASE=misp
+      - MARIADB_USER=misp
+      - MARIADB_PASSWORD=${MISP_DB_PASSWORD}
+      - MARIADB_RANDOM_ROOT_PASSWORD=yes
+    volumes:
+      - ./misp-db-data:/var/lib/mysql
+    restart: unless-stopped
+
+  misp-redis:
+    image: valkey/valkey:7.2
+    container_name: misp_redis
+    command: ["valkey-server", "--requirepass", "${MISP_REDIS_PASSWORD}"]
+    restart: unless-stopped
+
   # ── Ollama (IA local) ─────────────────────────────────────
+  # Ollama NO tiene autenticación: quien llegue al puerto puede
+  # usar el modelo, descargar otros o borrarlos. Solo en SOC_BIND.
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.40.8
     container_name: soc_ollama
     ports:
-      - "11434:11434"
+      - "${SOC_BIND:-127.0.0.1}:11434:11434"
     volumes:
       - ./ollama-data:/root/.ollama
     restart: unless-stopped
