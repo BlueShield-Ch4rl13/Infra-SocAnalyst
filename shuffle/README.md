@@ -1,15 +1,15 @@
 # Workflow SOAR (Shuffle)
 
-Documentación del workflow de respuesta automatizada. El **export `workflow-soc.json` debes generarlo desde tu propia instancia** (Shuffle → tu workflow → menú `⋯` → *Export*), porque contiene UUIDs e IDs internos específicos de tu despliegue. Aquí se documenta la estructura y se incluye el código de los nodos Python (`nodes/`) que sí es reproducible.
+Documentación del workflow de respuesta automatizada. El **export `workflow-soc.json` debes generarlo desde tu propia instancia** (Shuffle → tu workflow → menú `⋯` → *Export*), porque contiene UUIDs e IDs internos específicos de tu despliegue. Aquí se documenta la estructura y se incluye el código de los nodos Python (`nodos/`) que sí es reproducible.
 
 ## Cadena de nodos
 
 ```
 Webhook (Wazuh)
-  → IOC PYTHON        (nodes/ioc_python.py — extrae IOCs + severidad)
+  → IOC PYTHON        (nodos/ioc_python.py — extrae IOCs + severidad)
   → MISP              (enriquecimiento de inteligencia de amenazas)
   → OLLAMA            (HTTP POST — análisis semántico con IA local)
-  → CLEAN             (nodes/clean.py — normaliza la salida de la IA)
+  → CLEAN             (nodos/clean.py — normaliza la salida de la IA)
   → ALERT (TheHive)   (crea la alerta)
   → CASE (TheHive)    (promociona a caso)
   → Discord           (tarjeta con severidad, activo, IOC y enlace)
@@ -19,26 +19,22 @@ Webhook (Wazuh)
 
 **Webhook** — recibe el JSON de la integración `custom-shuffle.py`. El cuerpo queda disponible como `$exec`.
 
-**IOC PYTHON** (`nodes/ioc_python.py`) — nodo *Execute Python*. El nombre exacto importa: exporta como `$ioc_python.*`.
+**IOC PYTHON** (`nodos/ioc_python.py`) — nodo *Execute Python*. El nombre exacto importa: exporta como `$ioc_python.*`.
 
 **MISP** — buscar/crear el observable (`$ioc_python.srcip`) y devolver reputación.
 
-**OLLAMA** — acción HTTP `POST http://<HOST_SOC>:11434/api/generate`:
-```json
-{
-  "model": "llama3.2:3b",
-  "prompt": "Analiza brevemente esta alerta de seguridad y su gravedad: ...",
-  "stream": false,
-  "options": { "num_predict": 60 }
-}
+**OLLAMA** — acción HTTP `POST http://<HOST_SOC>:11434/api/generate` con body:
 ```
-⚠️ No insertes objetos `$exec.*` completos en el `prompt`: rompen el JSON. Usa texto estático o campos escalares ya limpiados.
+$ioc_python.ollama_body
+```
+El cuerpo lo construye `IOC PYTHON` con `json.dumps`, y el prompt lleva la regla, el nivel, las técnicas ATT&CK, el equipo, la IP y el log de la alerta. Antes el prompt era un texto fijo sin ningún dato de la alerta, así que "la IA analiza la alerta" no era cierto.
+⚠️ No insertes objetos `$exec.*` directamente en el body: unas comillas en el log rompen el JSON.
 
-**CLEAN** (`nodes/clean.py`) — nodo *Execute Python*; deja el análisis en una sola línea segura.
+**CLEAN** (`nodos/clean.py`) — nodo *Execute Python*; deja el análisis en una sola línea segura.
 
 **ALERT (TheHive)** — acción *Create alert* (POST, no *Get alert*). Campos clave:
 - `type`, `source` = `"Wazuh"` (no vacío)
-- `sourceRef` único por alerta, p.ej. `"wazuh-$exec.data.srcip-$exec.rule.level"` (si no, TheHive deduplica en silencio)
+- `sourceRef` único por alerta: `"$ioc_python.source_ref"` (el id de la alerta de Wazuh; si se repite, TheHive deduplica en silencio)
 - `severity` = entero sin comillas (`$ioc_python.severity`, 1–4)
 - `title` / `description` con `$ioc_python.rule_desc` y `$clean.analisis`
 
