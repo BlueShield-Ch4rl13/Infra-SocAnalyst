@@ -13,17 +13,37 @@
 #    argv[2] = api_key (no usado aquí)
 #    argv[3] = hook_url (webhook de Shuffle)
 # ============================================================
-import sys
 import json
+import os
+import sys
 import time
+from urllib.parse import urlsplit
 
 try:
     import requests
-    from requests.packages.urllib3 import disable_warnings  # type: ignore
-    disable_warnings()  # silencia el aviso de verify=False (cert autofirmado)
 except ImportError:
     # El Python embebido de Wazuh incluye requests.
     requests = None
+
+# Verificacion TLS del webhook de Shuffle:
+#   SHUFFLE_CA=/ruta/ca-shuffle.pem   -> verifica contra esa CA (recomendado)
+#   SHUFFLE_INSECURE_TLS=1             -> sin verificar, SOLO laboratorio
+#   (nada)                             -> verificacion normal del sistema
+# Antes iba siempre con verify=False: cualquiera en el camino podia leer las
+# alertas o hacerse pasar por Shuffle.
+if os.environ.get("SHUFFLE_INSECURE_TLS") == "1":
+    VERIFICAR = False
+    if requests is not None:
+        requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
+else:
+    VERIFICAR = os.environ.get("SHUFFLE_CA") or True
+
+
+def sin_secreto(texto, hook_url):
+    """El webhook lleva su identificador en la ruta, y quien lo tiene puede
+    lanzar el workflow: al log solo va el servidor, nunca la URL completa."""
+    servidor = urlsplit(hook_url).netloc or "?"
+    return str(texto).replace(hook_url, "https://%s/api/v1/hooks/<oculto>" % servidor)
 
 
 def log(msg):
@@ -74,13 +94,12 @@ def main():
         sys.exit(1)
 
     try:
-        # verify=False -> equivalente a curl -k (cert autofirmado de Shuffle)
-        resp = requests.post(hook_url, json=payload, verify=False, timeout=10)
+        resp = requests.post(hook_url, json=payload, verify=VERIFICAR, timeout=10)
         resp.raise_for_status()
     except Exception as e:
         # Antes se tragaba el error y el script salia 0 "con exito": un webhook
         # mal configurado o un 4xx/5xx pasaba inadvertido.
-        log("fallo al reenviar a Shuffle (%s): %s" % (hook_url, e))
+        log("fallo al reenviar a Shuffle (%s): %s" % (urlsplit(hook_url).netloc, sin_secreto(e, hook_url)))
         sys.exit(1)
 
     sys.exit(0)
