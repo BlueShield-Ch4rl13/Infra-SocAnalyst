@@ -1,0 +1,45 @@
+name: CI
+
+# Comprueba lo que se puede sin levantar el stack entero (Shuffle, TheHive,
+# Cortex, MISP, Ollama, Tetragon, Falco, Suricata):
+#  - que los dos compose son válidos usando compose/.env.example tal cual
+#  - que los scripts de ataque no tienen errores de bash (shellcheck)
+#  - que el Python de Shuffle/Wazuh no tiene fallos de sintaxis ni nombres sueltos
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # config solo interpola variables; no descarga imágenes ni arranca nada.
+      # El propio .env.example sirve de valores de relleno.
+      - name: Validar los dos compose
+        run: |
+          cp compose/.env.example compose/.env
+          docker compose --env-file compose/.env -f compose/soar-stack.yml config -q
+          docker compose --env-file compose/.env -f compose/telemetry-stack.yml config -q
+          rm -f compose/.env
+
+      - name: Shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning attack/*.sh
+
+      - name: Ruff (errores de sintaxis y nombres)
+        run: |
+          pipx install ruff
+          ruff check --select E9,F63,F7,F82 .
