@@ -46,7 +46,7 @@ services:
       - SHUFFLE_FILE_LOCATION=/shuffle-files
       - ORG_ID=${SHUFFLE_ORG_ID}            # UUID consistente, no el literal "Shuffle"
       - SHUFFLE_DEFAULT_USERNAME=${SHUFFLE_USER}
-      - SHUFFLE_DEFAULT_PASSWORD=${SHUFFLE_PASS}
+      - SHUFFLE_DEFAULT_PASSWORD=${SHUFFLE_PASS:?falta SHUFFLE_PASS en .env}
     volumes:
       - ./shuffle-apps:/shuffle-apps
       - ./shuffle-files:/shuffle-files
