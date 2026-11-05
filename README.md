@@ -253,7 +253,8 @@ Los puertos se publican en `SOC_BIND` (`compose/.env`), que debe ser la IP del h
 - Necesita MariaDB y Redis (`misp-db`, `misp-redis`), con sus contraseñas en `.env`.
 
 **TheHive y Cortex**
-- TheHive 5 guarda los datos en Cassandra y el índice en Elasticsearch; Cortex usa Elasticsearch (`--es-uri`). La clave de API de Cortex (`CORTEX_API_KEY`) se crea en la interfaz de Cortex y se pasa a TheHive.
+- TheHive 5 guarda los datos en Cassandra y el índice en Elasticsearch (7.17.29); Cortex usa Elasticsearch (`--es-uri`). La clave de API de Cortex (`CORTEX_API_KEY`) se crea en la interfaz de Cortex y se pasa a TheHive.
+- La carpeta de trabajos de Cortex (`CORTEX_JOBS_DIR`, por defecto `/opt/cortex/jobs`) se crea antes del primer arranque con `sudo install -d -m 700 /opt/cortex/jobs`. Antes estaba en `/tmp`, donde cualquier usuario del host podía crearla antes que Docker.
 
 **Integración Wazuh → Shuffle (TLS)**
 - `custom-shuffle.py` verifica el certificado de Shuffle. Con certificado autofirmado, copia la CA al manager y añade `Environment="SHUFFLE_CA=/var/ossec/etc/shuffle-ca.pem"` con `systemctl edit wazuh-manager`. `SHUFFLE_INSECURE_TLS=1` desactiva la verificación, solo en laboratorio.
@@ -384,6 +385,8 @@ Este repositorio es documentación de un **laboratorio académico**. Antes de re
 - Cambiar todas las credenciales por defecto de MISP, TheHive, Cortex y Wazuh.
 - El `payload.sh` incluido es **inofensivo y simulado**, solo para demostración.
 - Toda la actividad ofensiva se ejecuta exclusivamente dentro del laboratorio aislado, nunca hacia el exterior.
+- **El socket de Docker es root en el host.** `shuffle-backend`, `shuffle-orborus` y `cortex` lo montan porque lanzan contenedores, y Falco para leer sus metadatos. Quien entre en cualquiera de ellos controla la máquina: el stack SOAR va en su propia VM, con los puertos solo en la VLAN SOC, y mejor con Docker rootless. Un `docker-socket-proxy` no sirve aquí, porque estos servicios necesitan crear contenedores.
+- **El webhook de Shuffle ejecuta lo que recibe.** Shuffle pega el cuerpo del webhook dentro del código del nodo `IOC PYTHON` antes de ejecutarlo: quien pueda llamar al webhook con un cuerpo inventado ejecuta Python en el worker. Solo el manager de Wazuh debe poder llegar a él (VLAN SOC, nunca publicado en Internet).
 
 ---
 
