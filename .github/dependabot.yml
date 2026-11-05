@@ -1,0 +1,17 @@
+# Cada semana: las acciones de GitHub (fijadas por SHA) y las imágenes de los
+# compose. Solo versiones menores y parches: un salto de versión mayor
+# (Elasticsearch 8, Cassandra 5, MariaDB 11…) rompe TheHive o Cortex y se hace
+# a mano. Las imágenes que van por variable (${SHUFFLE_VERSION:-…}) no las ve.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+    groups: {acciones: {patterns: ["*"]}}
+  - package-ecosystem: docker-compose
+    directory: /compose
+    schedule: {interval: weekly}
+    groups: {imagenes: {patterns: ["*"]}}
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
