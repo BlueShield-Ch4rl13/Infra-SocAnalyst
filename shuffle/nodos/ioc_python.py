@@ -23,6 +23,14 @@
 import json
 import uuid
 
+# ⚠️  Shuffle pega el cuerpo del webhook TAL CUAL dentro de este
+#  código antes de ejecutarlo. Un JSON válido de Wazuh nunca
+#  contiene tres comillas seguidas, pero quien pueda llamar al
+#  webhook con un cuerpo inventado (p. ej. '"""; import os; ...')
+#  ejecuta Python en el worker de Shuffle. Por eso el webhook
+#  solo debe aceptar al manager de Wazuh: URL con su clave,
+#  puerto 3443 solo en la VLAN SOC (SOC_BIND) y nunca publicado
+#  en Internet.
 raw = r"""$exec"""            # el cuerpo del webhook llega como texto
 
 try:

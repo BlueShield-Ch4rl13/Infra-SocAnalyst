@@ -15,8 +15,17 @@
 #     cambia sola rompe el laboratorio el día menos pensado.
 #   - docker.sock solo donde es imprescindible (orborus y el
 #     backend de Shuffle lanzan contenedores; Cortex ejecuta
-#     analizadores en Docker). Quien controla esos contenedores
-#     controla el host: no los expongas fuera de la VLAN SOC.
+#     analizadores en Docker). Montar el socket es dar root en
+#     el host: quien entre en shuffle-backend, shuffle-orborus
+#     o cortex (una vulnerabilidad, una app de Shuffle, un
+#     analizador) puede lanzar un contenedor privilegiado con /
+#     montado. Por eso: este stack va en su propia VM, sin nada
+#     más que valga la pena en ella; los puertos solo en la VLAN
+#     SOC; y si tu versión lo permite, Docker rootless
+#     (dockerd-rootless-setuptool.sh) para que ese "root" sea un
+#     usuario sin privilegios. Un docker-socket-proxy no lo
+#     arregla: estos servicios necesitan crear contenedores, y
+#     con eso basta para escapar.
 # ============================================================
 
 services:
@@ -50,6 +59,7 @@ services:
     volumes:
       - ./shuffle-apps:/shuffle-apps
       - ./shuffle-files:/shuffle-files
+      # Socket de Docker: ver la cabecera, equivale a root en el host
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - shuffle-opensearch
@@ -69,6 +79,7 @@ services:
     security_opt:
       - seccomp:unconfined
     volumes:
+      # Socket de Docker: ver la cabecera, equivale a root en el host
       - /var/run/docker.sock:/var/run/docker.sock
     restart: unless-stopped
 
@@ -134,7 +145,9 @@ services:
     restart: unless-stopped
 
   thehive-elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.18
+    # 7.17.29: la última 7.17. La 7.17.18 tenía CVE-2024-23450
+    # (una canalización de ingesta muy anidada tumbaba el nodo).
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.29
     container_name: thehive_elasticsearch
     environment:
       - discovery.type=single-node
@@ -157,14 +170,21 @@ services:
       - thehive-elasticsearch
     # Cortex guarda usuarios, organizaciones y trabajos en Elasticsearch:
     # sin --es-uri no tenía base de datos.
+    # Los analizadores son contenedores hermanos que montan la
+    # carpeta de trabajos con la MISMA ruta del host. Antes era
+    # /tmp/cortex-jobs: en /tmp cualquier usuario del host puede
+    # crearla antes que Docker y leer o cambiar lo que analiza
+    # Cortex. Ahora va en una ruta solo de root (crea la carpeta
+    # con chmod 700 antes del primer arranque).
     command:
       - --es-uri
       - http://thehive-elasticsearch:9200
       - --job-directory
-      - /tmp/cortex-jobs
+      - ${CORTEX_JOBS_DIR:-/opt/cortex/jobs}
     volumes:
+      # Socket de Docker: ver la cabecera, equivale a root en el host
       - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp/cortex-jobs:/tmp/cortex-jobs
+      - ${CORTEX_JOBS_DIR:-/opt/cortex/jobs}:${CORTEX_JOBS_DIR:-/opt/cortex/jobs}
     restart: unless-stopped
 
   # ── MISP (inteligencia de amenazas) ───────────────────────
